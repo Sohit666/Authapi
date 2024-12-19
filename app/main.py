@@ -13,7 +13,6 @@ class User(BaseModel):
 # FastAPI application instance
 app = FastAPI()
 
-# Custom JWTBearer class to decode and verify JWT token
 class JWTBearer(HTTPBearer):
     def __init__(self, auto_error: bool = True):
         """
@@ -32,7 +31,7 @@ class JWTBearer(HTTPBearer):
         if credentials:
             if credentials.scheme.lower() != "bearer":
                 raise HTTPException(status_code=403, detail="Invalid authentication scheme.")
-            if not self.verify_jwt(credentials.credentials):
+            if not self.verify_jwt(credentials.credentials):  # Call verify_jwt here
                 raise HTTPException(status_code=403, detail="Invalid or expired token.")
             return credentials.credentials  # Return valid token
         else:
@@ -46,12 +45,20 @@ class JWTBearer(HTTPBearer):
         """
         try:
             # Decode the JWT token using the Supabase JWT secret
-            jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+            jwt.decode(
+                token,
+                SUPABASE_JWT_SECRET,
+                algorithms=["HS256"],
+                options={"verify_aud": False}  # Disable audience verification
+            )
             return True  # Token is valid
         except jwt.ExpiredSignatureError:
             return False  # Token has expired
-        except jwt.PyJWTError:
-            return False  # Invalid token
+        except jwt.InvalidTokenError:
+            return False  # Token is invalid
+
+
+
 
 # Route to handle user signup
 @app.post("/signup/")
@@ -72,14 +79,8 @@ async def signup(user: User):
 # Route to handle user login
 @app.post("/login/")
 async def login(user: User):
-    """
-    Endpoint for user login, returns access and refresh tokens on successful authentication.
-    :param user: User model containing email and password
-    :return: Access token and refresh token on successful login
-    """
     auth_response = await authenticate_user(user.email, user.password)
 
-    # If authentication fails, raise HTTPException
     if "access_token" not in auth_response:
         raise HTTPException(status_code=401, detail="Authentication failed")
 
@@ -89,14 +90,15 @@ async def login(user: User):
         "refresh_token": auth_response["refresh_token"]
     }
 
-# Protected route example that requires JWT authentication
+
 @app.get("/protected/")
 async def protected_route(token: str = Depends(JWTBearer())):
-    """
-    Protected endpoint requiring valid JWT token.
-    :param token: Valid JWT token provided by the client
-    :return: Message confirming access and user information
-    """
-    # The token is automatically validated by the JWTBearer dependency
-    current_user = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], options={"verify_aud": False})
+    # Decode the token to retrieve user information
+    current_user = jwt.decode(
+        token, 
+        SUPABASE_JWT_SECRET, 
+        algorithms=["HS256"], 
+        options={"verify_aud": False}
+    )
     return {"message": "You have access", "user": current_user}
+
